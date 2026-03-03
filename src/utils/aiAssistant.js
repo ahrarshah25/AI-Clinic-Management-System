@@ -1,3 +1,5 @@
+import { requestUserAssistant } from "../api/assistant-bot/bot.api";
+
 const RULES = [
   {
     keywords: ["fever", "cough", "sore throat", "flu", "cold"],
@@ -36,7 +38,7 @@ const RISK_ORDER = { low: 1, medium: 2, high: 3 };
 const maxRisk = (a, b) =>
   RISK_ORDER[a] >= RISK_ORDER[b] ? a : b;
 
-export const runSmartSymptomChecker = ({
+const localSymptomChecker = ({
   symptoms = "",
   age = "",
   gender = "",
@@ -75,7 +77,7 @@ export const runSmartSymptomChecker = ({
   };
 };
 
-export const detectRiskFlags = ({ diagnoses = [], symptoms = "" } = {}) => {
+const localRiskFlags = ({ diagnoses = [], symptoms = "" } = {}) => {
   const normalizedSymptoms = symptoms.toLowerCase();
   const diagnosisText = diagnoses
     .map((entry) => `${entry.title || ""} ${entry.notes || ""}`.toLowerCase())
@@ -108,7 +110,7 @@ export const detectRiskFlags = ({ diagnoses = [], symptoms = "" } = {}) => {
   return flags;
 };
 
-export const generatePrescriptionExplanation = ({
+const localPrescriptionExplanation = ({
   patientName = "Patient",
   medications = [],
   instructions = "",
@@ -142,11 +144,89 @@ export const generatePrescriptionExplanation = ({
   };
 };
 
-export const getAiAssistance = (input = "") => {
-  const result = runSmartSymptomChecker({ symptoms: input });
+export const runSmartSymptomChecker = async (
+  payload = {},
+  role = "doctor"
+) => {
+  try {
+    const data = await requestUserAssistant({
+      role,
+      action: "symptom_checker",
+      payload,
+    });
+    if (data?.result) {
+      return {
+        riskLevel: data.result.riskLevel || "medium",
+        possibleConditions: Array.isArray(data.result.possibleConditions)
+          ? data.result.possibleConditions
+          : [],
+        suggestedTests: Array.isArray(data.result.suggestedTests)
+          ? data.result.suggestedTests
+          : [],
+        summary: data.result.summary || "AI analysis completed.",
+      };
+    }
+  } catch {
+    // fallback below
+  }
+
+  return localSymptomChecker(payload);
+};
+
+export const detectRiskFlags = async (
+  payload = {},
+  role = "doctor"
+) => {
+  try {
+    const data = await requestUserAssistant({
+      role,
+      action: "risk_flags",
+      payload,
+    });
+    if (Array.isArray(data?.result?.flags) && data.result.flags.length) {
+      return data.result.flags;
+    }
+  } catch {
+    // fallback below
+  }
+
+  return localRiskFlags(payload);
+};
+
+export const generatePrescriptionExplanation = async (
+  payload = {},
+  role = "doctor"
+) => {
+  try {
+    const data = await requestUserAssistant({
+      role,
+      action: "prescription_explanation",
+      payload,
+    });
+    if (data?.result) {
+      return {
+        explanation: data.result.explanation || "",
+        explanationUrdu: data.result.explanationUrdu || "",
+        lifestyleRecommendations: Array.isArray(data.result.lifestyleRecommendations)
+          ? data.result.lifestyleRecommendations
+          : [],
+        preventiveAdvice: Array.isArray(data.result.preventiveAdvice)
+          ? data.result.preventiveAdvice
+          : [],
+      };
+    }
+  } catch {
+    // fallback below
+  }
+
+  return localPrescriptionExplanation(payload);
+};
+
+export const getAiAssistance = async (input = "") => {
+  const result = await runSmartSymptomChecker({ symptoms: input }, "patient");
   return [
-    `Risk Level: ${result.riskLevel.toUpperCase()}`,
-    `Possible Conditions: ${result.possibleConditions.join(", ")}`,
-    `Suggested Tests: ${result.suggestedTests.join(", ")}`,
+    `Risk Level: ${String(result.riskLevel || "medium").toUpperCase()}`,
+    `Possible Conditions: ${(result.possibleConditions || []).join(", ")}`,
+    `Suggested Tests: ${(result.suggestedTests || []).join(", ")}`,
   ];
 };

@@ -95,14 +95,18 @@ const DoctorDashboard = () => {
         ]);
         setTimeline(events || []);
         setSelectedPatientDiagnoses(diagnosisRows || []);
-        setRiskFlags(detectRiskFlags({ diagnoses: diagnosisRows || [], symptoms: symptomForm.symptoms }));
+        const flags = await detectRiskFlags(
+          { diagnoses: diagnosisRows || [], symptoms: symptomForm.symptoms },
+          userData?.role || ROLES.DOCTOR
+        );
+        setRiskFlags(flags);
       } catch {
         setTimeline([]);
         setRiskFlags([]);
       }
     };
     loadPatientData();
-  }, [selectedPatientId, symptomForm.symptoms]);
+  }, [selectedPatientId, symptomForm.symptoms, userData?.role]);
 
   const doctorPatients = useMemo(() => {
     const linkedIds = new Set(appointments.map((item) => item.patientId).filter(Boolean));
@@ -208,7 +212,11 @@ const DoctorDashboard = () => {
       ]);
       setTimeline(updatedEvents || []);
       setSelectedPatientDiagnoses(diagnosisRows || []);
-      setRiskFlags(detectRiskFlags({ diagnoses: diagnosisRows || [], symptoms: symptomForm.symptoms }));
+      const flags = await detectRiskFlags(
+        { diagnoses: diagnosisRows || [], symptoms: symptomForm.symptoms },
+        userData?.role || ROLES.DOCTOR
+      );
+      setRiskFlags(flags);
       await Swal.success("Diagnosis Saved", "Patient diagnosis has been recorded.");
     } catch {
       await Swal.error("Save Failed", "Could not save diagnosis.");
@@ -218,14 +226,14 @@ const DoctorDashboard = () => {
   const handleCreatePrescription = async (payload) => {
     try {
       const aiExplanation = aiEnabled
-        ? generatePrescriptionExplanation({
+        ? await generatePrescriptionExplanation({
             patientName:
               doctorPatients.find((item) => item.id === payload.patientId)?.fullName ||
               payload.patientName,
             medications: payload.medications,
             instructions: payload.instructions,
             language: "en",
-          })
+          }, userData?.role || ROLES.DOCTOR)
         : null;
 
       await createPrescription({
@@ -260,9 +268,16 @@ const DoctorDashboard = () => {
       await Swal.warning("Symptoms Required", "Please enter symptoms to run AI checker.");
       return;
     }
-    const result = runSmartSymptomChecker(symptomForm);
+    const result = await runSmartSymptomChecker(
+      symptomForm,
+      userData?.role || ROLES.DOCTOR
+    );
     setCheckerResult(result);
-    setRiskFlags(detectRiskFlags({ diagnoses: selectedPatientDiagnoses, symptoms: symptomForm.symptoms }));
+    const flags = await detectRiskFlags(
+      { diagnoses: selectedPatientDiagnoses, symptoms: symptomForm.symptoms },
+      userData?.role || ROLES.DOCTOR
+    );
+    setRiskFlags(flags);
     await Swal.success("AI Analysis Ready", "Smart symptom checker results generated.");
   };
 
